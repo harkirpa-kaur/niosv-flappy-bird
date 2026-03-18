@@ -11,12 +11,12 @@
 #define PIPE_WIDTH 20
 #define PIPE_COLOUR 0x0ff0
 
-#define MAX_PIPES 7
+#define MAX_PIPES 10
 
 #define PIPE_SPAWN_X SCREEN_WIDTH - PIPE_WIDTH
 
-#define PIPE_SPAWN_INTERVAL_HIGH 0b000010001111000110
-#define PIPE_SPAWN_INTERVAL_LOW 0b1000110000000000
+#define PIPE_SPAWN_INTERVAL_HIGH 0b0000101111101011
+#define PIPE_SPAWN_INTERVAL_LOW 0b1100001000000000
 
 // global variables
 volatile int * pixel_ctrl_ptr = (int *)0xFF203020;
@@ -28,7 +28,7 @@ volatile int *timer_periodh  = (int *)0xFF20200C;
 volatile int pixel_buffer_start; 
 short int Buffer1[240][512];
 short int Buffer2[240][512];
-int pipe_pos[4][3];
+int pipe_pos[MAX_PIPES][3];
 int next_pipe_index = 0;
 int num_pipes_spawned = 0;
 
@@ -133,15 +133,22 @@ void draw_pipe(){
 
 void clear_screen()
 {
-    for(int y = 0; y < SCREEN_HEIGHT; y++){
-        for(int x = 0; x < SCREEN_WIDTH; x++){
-            plot_pixel(x, y, 0);
+    for (int pipe = 0 ; pipe < num_pipes_spawned ; pipe++){
+        int y_dir = pipe_pos[pipe][1] == 0 ? 1 : -1;
+
+        for(int i = 0; i < pipe_pos[pipe][2]; i++){
+            for(int j = 0; j <= PIPE_WIDTH; j++){
+                plot_pixel(pipe_pos[pipe][0] + j, pipe_pos[pipe][1] + i*y_dir, 0x0000);
+            }
         }
     }
 }
 
 void plot_pixel(int x, int y, short int color)
 {
+    if (x < 0 || x > SCREEN_WIDTH || y < 0 || y > SCREEN_HEIGHT)
+        return;
+
     volatile short int *one_pixel_address;
 
     one_pixel_address = (short int *)(pixel_buffer_start + (y << 10) + (x << 1));
