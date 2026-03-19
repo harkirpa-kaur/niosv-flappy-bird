@@ -367,6 +367,9 @@ int main(void)
         //erase_bird(prev_bird_x, prev_bird_y);
         draw_pipe();
         
+    if (rand() % 25 == 0) {
+    bird_velocity = JUMP_STRENGTH;
+}
         // apply gravity
 bird_velocity += GRAVITY;
 bird_y += bird_velocity;
