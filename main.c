@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <stdio.h>
 
 // constants
 #define SCREEN_WIDTH 319
@@ -600,7 +601,7 @@ int prev_bird_y = 100;
 
 bool game_over = false;
 int score = 0;
-const short *score_num[10][1250] = {_0, _1, _2, _3, _4, _5, _6, _7, _8, _9};
+const short *score_num[10] = {_0, _1, _2, _3, _4, _5, _6, _7, _8, _9};
 
 // function declarations
 void wait_for_vsync();
@@ -647,7 +648,7 @@ int main(void)
         for(int i = 0; i < num_pipes_spawned; i++){
             pipe_pos[i][0]--;
             // if pipe has passed the bird, increment score
-            if((pipe_pos[i][0]+PIPE_WIDTH) < bird_x){
+            if((pipe_pos[i][0]+PIPE_WIDTH) ==  bird_x){
                 score++;
             }
         }
@@ -693,6 +694,7 @@ int main(void)
         draw_pipe();
         update_score();
     }
+	printf("game over :(");
 }
 
 bool timer_done() {
@@ -733,10 +735,13 @@ void draw_pipe(){
         int y_dir = pipe_pos[pipe][1] == 0 ? 1 : -1;
 
         for(int i = 0; i < pipe_pos[pipe][2]; i++){
+			plot_pixel(pipe_pos[pipe][0] + PIPE_WIDTH, pipe_pos[pipe][1] + i*y_dir, BG[(pipe_pos[pipe][1] + i*y_dir) * BG_WIDTH + pipe_pos[pipe][0] + PIPE_WIDTH-1]);
+			if (y_dir == 1 && pipe_pos[pipe][0] > (SCREEN_WIDTH - PADDING - 2*SCORE_WIDTH) && pipe_pos[pipe][0] < (SCREEN_WIDTH - PADDING) && (pipe_pos[pipe][1] + i) > PADDING && (pipe_pos[pipe][1] + i) < (PADDING + SCORE_HEIGHT)){
+				continue;
+			}
             // draw next line of pipe
             plot_pixel(pipe_pos[pipe][0], pipe_pos[pipe][1] + i*y_dir, PIPE_COLOUR);
             // erase previous line of pipe
-            plot_pixel(pipe_pos[pipe][0] + PIPE_WIDTH, pipe_pos[pipe][1] + i*y_dir, BG[(pipe_pos[pipe][1] + i*y_dir) * BG_WIDTH + pipe_pos[pipe][0] + PIPE_WIDTH-1]);
             // if pipe is within x range of the bird check for collision
             if ((pipe_pos[pipe][0] + PIPE_WIDTH) >  bird_x && pipe_pos[pipe][0] < (bird_x + BIRD_WIDTH)){
                 detect_collision(pipe);
@@ -842,7 +847,7 @@ void detect_collision(int pipe){
         return;
     } 
     //bottom pipe collision check
-    else if (pipe_pos[pipe][2] <= (bird_y + BIRD_HEIGHT)){
+    else if ((SCREEN_HEIGHT - pipe_pos[pipe][2]) <= (bird_y + BIRD_HEIGHT)){
         game_over = true;
         return;
     }
@@ -854,13 +859,8 @@ void update_score(){
 
     for (int i = 0 ; i < SCORE_WIDTH ; i++){
         for (int j = 0 ; j < SCORE_HEIGHT ; j++){
-            plot_pixel(SCREEN_WIDTH - PADDING - 2*SCORE_WIDTH + i, PADDING + j, score_num[num_1][i * SCORE_WIDTH + j]);
-        }
-    }
-
-    for (int i = 0 ; i < SCORE_WIDTH ; i++){
-        for (int j = 0 ; j < SCORE_HEIGHT ; j++){
-            plot_pixel(SCREEN_WIDTH - PADDING - SCORE_WIDTH + i, PADDING + j, score_num[num_0][i * SCORE_WIDTH + j]);
+            plot_pixel(SCREEN_WIDTH - PADDING - 2*SCORE_WIDTH + i, PADDING + j, score_num[num_1][j * SCORE_WIDTH + i]);
+            plot_pixel(SCREEN_WIDTH - PADDING - SCORE_WIDTH + i, PADDING + j, score_num[num_0][j * SCORE_WIDTH + i]);
         }
     }
 }
