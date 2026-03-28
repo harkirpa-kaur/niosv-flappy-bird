@@ -1078,8 +1078,6 @@ volatile int *timer_periodl  = (int *)0xFF202008;
 volatile int *timer_periodh  = (int *)0xFF20200C;
 volatile int *KEY_ptr = (int *)0xFF200050;
 
-
-
 volatile int pixel_buffer_start; 
 short int Buffer1[240][512];
 short int Buffer2[240][512];
@@ -1111,6 +1109,9 @@ void draw_bird(int x, int y);
 void erase_bird(int x, int y);
 void detect_collision(int pipe);
 void update_score();
+void start_state();
+void game_State();
+void end_state();
 
 int main(void)
 {
@@ -1137,6 +1138,10 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
     
+    start_state();
+}
+
+void start_state(){
     int pressed = *(KEY_ptr + 3);
 
     while (!(pressed & 0x1)){
@@ -1144,15 +1149,34 @@ int main(void)
     }
 
     *(KEY_ptr + 3) = 0x1; 
+    
+    game_state();
+}
+
+void game_state(){
+    //reset vars
+    next_pipe_index = 0;
+    game_over = false;
+    score = 0;
+    
+    for (int i = 0 ; i < num_pipes_spawned ; i ++){
+        pipes[i].bottom_length = 0;
+        pipes[i].top_length = 0;
+    }
+
+    num_pipes_spawned = 0;
+
     BG = GAME_SCREEN;
     clear_screen();
     wait_for_vsync();
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
+
     spawn_pipe();
 
     // START = bit 2, CONT = bit 1
     *timer_control = (1 << 2) | (1 << 1);
+    *timer_status = 0;
 
     while(!game_over)
     {
@@ -1168,11 +1192,6 @@ int main(void)
         if (timer_done()){
             spawn_pipe();
         }
-        
-        //draw_pipe();
-
-        // erase old bird
-        //erase_bird(prev_bird_x, prev_bird_y);
         draw_pipe();
         
         bird_velocity = jump_strength;
@@ -1206,12 +1225,27 @@ int main(void)
         draw_pipe();
         update_score();
     }
+    end_state();
+}
+
+void end_state(){
+    // START = bit 2, CONT = bit 1
+    *timer_control = (0 << 2) | (0 << 1);
+
 	BG = END_SCREEN;
     clear_screen();
     wait_for_vsync();
+    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
-    
-    while (1) {}
+
+    int pressed = *(KEY_ptr + 3);
+
+    while (!(pressed & 0x1)){
+        pressed = *(KEY_ptr + 3);
+    }
+
+    *(KEY_ptr + 3) = 0x1; 
+    game_state();
 }
 
 bool timer_done() {
