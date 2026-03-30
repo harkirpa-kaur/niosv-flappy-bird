@@ -1110,7 +1110,7 @@ void erase_bird(int x, int y);
 void detect_collision(int pipe);
 void update_score();
 void start_state();
-void game_State();
+void game_state();
 void end_state();
 
 int main(void)
@@ -1193,11 +1193,21 @@ void game_state(){
             spawn_pipe();
         }
         draw_pipe();
-        
-        bird_velocity = jump_strength;
-        // apply gravity
-        //bird_velocity += GRAVITY;
-        bird_y += bird_velocity;
+
+        //updates jump strength based on audio input
+        process_audio();
+        // bird_y -= jump_strength;
+        // // apply gravity
+        // bird_velocity += GRAVITY;
+        // bird_y += bird_velocity;
+
+        if (jump_strength > 8){
+            bird_y = 50;
+            printf("fly\n");
+        }else{
+            bird_y = 0;
+            printf("no fly :(\n");
+        }
 
         // bounds (so it doesn't fly off screen)
         if (bird_y < 0) {
@@ -1369,29 +1379,39 @@ void erase_bird(int x, int y)
 
 //audio processing
 
-// #define AUDIO_BASE 0xFF203040
-// int process_audio(void) {
-//     // Audio codec Register address
-//     volatile int * audio_ptr = (int *) AUDIO_BASE;
-//     // intermediate values
-//     int fifospace;
-//     // This is an infinite loop checking the RARC to see if there is at least a single
-//     // entry in the input fifos. If there is, just copy it over to the output fifo.
-//     // The timing of the input fifo controls the timing of the output
-//     while (1) {
-//         fifospace = *(audio_ptr + 1); // read the audio port fifospace register
-//         if ((fifospace & 0x000000FF) > 0) // check RARC to see if there is data to read
-//         {
-//             // load both input microphone channels - just get one sample from each
-//             int left = *(audio_ptr + 2);
-//             int right = *(audio_ptr + 3);
+#define AUDIO_BASE 0xFF203040
+int process_audio() {
+    jump_strength = 0;
+    // Audio codec Register address
+    volatile int * audio_ptr = (int *) AUDIO_BASE;
+    // intermediate values
+    int fifospace;
+    // This is an infinite loop checking the RARC to see if there is at least a single
+    // entry in the input fifos. If there is, just copy it over to the output fifo.
+    // The timing of the input fifo controls the timing of the output
+    fifospace = *(audio_ptr + 1); // read the audio port fifospace register
+    int count = 0;
+    int sum = 0;
+    while ((fifospace & 0xFF) > 0 && count < 64) // check RARC to see if there is data to read and average buffer
+    {
+        // load both input microphone channels - just get one sample from each
+        int left = *(audio_ptr + 2);
+        int right = *(audio_ptr + 3);
 
-//             //find average amplitude for jump strength
-//             jump_strength = (abs(left) + abs(right))/2;
-//             printf(jump_strength);
-//         }
-//     }
-// }
+        //find average amplitude for jump strength
+        int sample = ((abs(left) + abs(right))/2);
+
+        sum += sample;
+        count++;
+
+        fifospace = *(audio_ptr + 1); // read the audio port fifospace register
+    }
+
+    if (count > 0){
+        jump_strength = sum/count;
+        printf("%d\n", jump_strength);
+    }
+}
 
 void detect_collision(int pipe){
     //pipe collision check
