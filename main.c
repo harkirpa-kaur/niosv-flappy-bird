@@ -10,10 +10,10 @@
 #define PADDING 15
 
 #define PIPE_MIN_HEIGHT 30
-#define PIPE_MAX_HEIGHT 100
+#define PIPE_MAX_HEIGHT 80
 #define PIPE_WIDTH 20
 #define PIPE_COLOUR 0x0ff0
-#define PIPE_SPACE 50
+#define PIPE_SPACE 70
 
 #define MAX_PIPES 10
 
@@ -23,6 +23,7 @@
 #define PIPE_SPAWN_INTERVAL_LOW 0b1100001000000000
 
 #define GRAVITY 1
+#define JUMP -1
 #define SKY_COLOUR 0x9edd
 
 struct PipePair {
@@ -1112,6 +1113,7 @@ void update_score();
 void start_state();
 void game_state();
 void end_state();
+void process_audio();
 
 int main(void)
 {
@@ -1167,9 +1169,12 @@ void game_state(){
     num_pipes_spawned = 0;
 
     BG = GAME_SCREEN;
+
     clear_screen();
+
     wait_for_vsync();
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
+
     clear_screen();
 
     spawn_pipe();
@@ -1180,6 +1185,7 @@ void game_state(){
 
     while(!game_over)
     {
+        printf("%d \n", 1);
         // update positions
         for(int i = 0; i < num_pipes_spawned; i++){
             pipes[i].x--;
@@ -1188,52 +1194,53 @@ void game_state(){
                 score++;
             }
         }
+        printf("%d \n", 2);
 
         if (timer_done()){
             spawn_pipe();
         }
-        draw_pipe();
 
+        printf("%d \n", 3);
         //updates jump strength based on audio input
         process_audio();
-        // bird_y -= jump_strength;
-        // // apply gravity
-        // bird_velocity += GRAVITY;
-        // bird_y += bird_velocity;
-
-        if (jump_strength > 8){
-            bird_y = 50;
-            printf("fly\n");
-        }else{
-            bird_y = 0;
-            printf("no fly :(\n");
+        if (jump_strength > 60){
+            bird_velocity += JUMP;
         }
+        else{
+            // apply gravity
+            bird_velocity += GRAVITY;
+        }
+        printf("%d \n", 4);
+        bird_y += bird_velocity;
 
         // bounds (so it doesn't fly off screen)
         if (bird_y < 0) {
             bird_y = 0;
-            bird_velocity = 0;
         }
-
-        if (bird_y > SCREEN_HEIGHT - BIRD_HEIGHT) {
+        else if (bird_y > SCREEN_HEIGHT - BIRD_HEIGHT) {
             bird_y = SCREEN_HEIGHT - BIRD_HEIGHT;
-            bird_velocity = 0;
         }
+        printf("%d \n", 5);
 
-        //draw new bird :p
-
+        //update game screen
         erase_bird(prev_bird_x, prev_bird_y);
         draw_bird(bird_x, bird_y);
+        draw_pipe();
+        printf("6\n");
         update_score();
+
         wait_for_vsync();
         pixel_buffer_start = *(pixel_ctrl_ptr + 1);
+
         erase_bird(prev_bird_x, prev_bird_y);
         draw_bird(bird_x, bird_y);
-         // update previous position
-        prev_bird_x = bird_x;
-        prev_bird_y = bird_y;
         draw_pipe();
         update_score();
+        printf("7\n");
+
+        // update previous bird position
+        prev_bird_x = bird_x;
+        prev_bird_y = bird_y;
     }
     end_state();
 }
@@ -1255,6 +1262,7 @@ void end_state(){
     }
 
     *(KEY_ptr + 3) = 0x1; 
+    printf("game ended\n");
     game_state();
 }
 
@@ -1283,7 +1291,12 @@ void spawn_pipe()
     next_pipe_index = (next_pipe_index + 1) % MAX_PIPES;
 
     draw_pipe();
-}
+
+    wait_for_vsync();
+    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
+
+    draw_pipe();
+}   
 
 void draw_pipe(){
     // iterate through all pipes and draw them
@@ -1300,16 +1313,21 @@ void draw_pipe(){
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
 
+        printf("drew pipe %d top\n", pipe);
+
         for(int i = SCREEN_HEIGHT; i > SCREEN_HEIGHT - pipes[pipe].bottom_length; i--){
             // erase previous line of pipe
 			plot_pixel(pipes[pipe].x + PIPE_WIDTH, i, BG[i * SCREEN_WIDTH + pipes[pipe].x + PIPE_WIDTH - 1]);
             // draw next line of pipe
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
+        printf("drew pipe %d bottom\n", pipe);
+
         // if pipe is within x range of the bird check for collision
         if (pipes[pipe].x <= (bird_x + BIRD_WIDTH) && (pipes[pipe].x + PIPE_WIDTH) > bird_x){
             detect_collision(pipe);
         }
+        printf("checked for pipe %d collision\n", pipe);
     }
 }
 
@@ -1380,7 +1398,7 @@ void erase_bird(int x, int y)
 //audio processing
 
 #define AUDIO_BASE 0xFF203040
-int process_audio() {
+void process_audio() {
     jump_strength = 0;
     // Audio codec Register address
     volatile int * audio_ptr = (int *) AUDIO_BASE;
@@ -1391,7 +1409,7 @@ int process_audio() {
     // The timing of the input fifo controls the timing of the output
     fifospace = *(audio_ptr + 1); // read the audio port fifospace register
     int count = 0;
-    int sum = 0;
+    long sum = 0;
     while ((fifospace & 0xFF) > 0 && count < 64) // check RARC to see if there is data to read and average buffer
     {
         // load both input microphone channels - just get one sample from each
@@ -1399,7 +1417,7 @@ int process_audio() {
         int right = *(audio_ptr + 3);
 
         //find average amplitude for jump strength
-        int sample = ((abs(left) + abs(right))/2);
+        long sample = ((abs(left) + abs(right))/2)/1000000;
 
         sum += sample;
         count++;
@@ -1409,7 +1427,7 @@ int process_audio() {
 
     if (count > 0){
         jump_strength = sum/count;
-        printf("%d\n", jump_strength);
+        printf("jump strength: %f\n", jump_strength);
     }
 }
 
