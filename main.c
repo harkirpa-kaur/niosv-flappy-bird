@@ -1101,6 +1101,9 @@ short score_bg = SKY_COLOUR;
 
 const short *BG = START_SCREEN;
 
+int fall_wait_interval = 10;
+int jump_wait_interval = 10;
+
 // function declarations
 void wait_for_vsync();
 bool timer_done();
@@ -1114,6 +1117,8 @@ void start_state();
 void game_state();
 void end_state();
 void process_audio();
+void spawn_pipe();
+void draw_pipe();
 
 int main(void)
 {
@@ -1140,10 +1145,20 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
     
-    start_state();
+    while (1){
+        start_state();
+        game_state();
+        end_state();
+    }
 }
 
 void start_state(){
+    BG = START_SCREEN;
+    clear_screen();
+    wait_for_vsync();
+    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
+    clear_screen();
+
     int pressed = *(KEY_ptr + 3);
 
     while (!(pressed & 0x1)){
@@ -1151,30 +1166,32 @@ void start_state(){
     }
 
     *(KEY_ptr + 3) = 0x1; 
-    
-    game_state();
 }
 
 void game_state(){
     //reset vars
     next_pipe_index = 0;
+    num_pipes_spawned = 0;
     game_over = false;
     score = 0;
+    score_bg = SKY_COLOUR;
+    bird_y = 120;
+    prev_bird_y = 0;
+    bird_velocity = 0;
+    jump_strength = 0;
+    jump_wait_interval = 10;
+    fall_wait_interval = 10;
     
-    for (int i = 0 ; i < num_pipes_spawned ; i ++){
+    for (int i = 0 ; i < MAX_PIPES ; i ++){
         pipes[i].bottom_length = 0;
         pipes[i].top_length = 0;
+        pipes[i].x = 0;
     }
 
-    num_pipes_spawned = 0;
-
     BG = GAME_SCREEN;
-
     clear_screen();
-
     wait_for_vsync();
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
-
     clear_screen();
 
     spawn_pipe();
@@ -1185,7 +1202,6 @@ void game_state(){
 
     while(!game_over)
     {
-        printf("%d \n", 1);
         // update positions
         for(int i = 0; i < num_pipes_spawned; i++){
             pipes[i].x--;
@@ -1194,25 +1210,30 @@ void game_state(){
                 score++;
             }
         }
-        printf("%d \n", 2);
 
         if (timer_done()){
             spawn_pipe();
         }
 
-        printf("%d \n", 3);
         //updates jump strength based on audio input
         process_audio();
         if (jump_strength > 60){
-            bird_velocity += JUMP;
+            if (jump_wait_interval <= 0){
+                bird_velocity += JUMP;
+                jump_wait_interval = 10;
+            }
+            else
+                jump_wait_interval--;
         }
         else{
-            // apply gravity
-            bird_velocity += GRAVITY;
+            if (fall_wait_interval <= 0){
+                bird_velocity += GRAVITY;
+                fall_wait_interval = 10;
+            }
+            else
+                fall_wait_interval--;
         }
-        printf("%d \n", 4);
         bird_y += bird_velocity;
-
         // bounds (so it doesn't fly off screen)
         if (bird_y < 0) {
             bird_y = 0;
@@ -1220,13 +1241,11 @@ void game_state(){
         else if (bird_y > SCREEN_HEIGHT - BIRD_HEIGHT) {
             bird_y = SCREEN_HEIGHT - BIRD_HEIGHT;
         }
-        printf("%d \n", 5);
 
         //update game screen
         erase_bird(prev_bird_x, prev_bird_y);
         draw_bird(bird_x, bird_y);
         draw_pipe();
-        printf("6\n");
         update_score();
 
         wait_for_vsync();
@@ -1236,18 +1255,17 @@ void game_state(){
         draw_bird(bird_x, bird_y);
         draw_pipe();
         update_score();
-        printf("7\n");
 
         // update previous bird position
         prev_bird_x = bird_x;
         prev_bird_y = bird_y;
     }
-    end_state();
 }
 
 void end_state(){
     // START = bit 2, CONT = bit 1
     *timer_control = (0 << 2) | (0 << 1);
+    *timer_status = 0;
 
 	BG = END_SCREEN;
     clear_screen();
@@ -1262,8 +1280,6 @@ void end_state(){
     }
 
     *(KEY_ptr + 3) = 0x1; 
-    printf("game ended\n");
-    game_state();
 }
 
 bool timer_done() {
@@ -1289,13 +1305,6 @@ void spawn_pipe()
     }
 
     next_pipe_index = (next_pipe_index + 1) % MAX_PIPES;
-
-    draw_pipe();
-
-    wait_for_vsync();
-    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
-
-    draw_pipe();
 }   
 
 void draw_pipe(){
@@ -1313,7 +1322,6 @@ void draw_pipe(){
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
 
-        printf("drew pipe %d top\n", pipe);
 
         for(int i = SCREEN_HEIGHT; i > SCREEN_HEIGHT - pipes[pipe].bottom_length; i--){
             // erase previous line of pipe
@@ -1321,13 +1329,11 @@ void draw_pipe(){
             // draw next line of pipe
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
-        printf("drew pipe %d bottom\n", pipe);
 
         // if pipe is within x range of the bird check for collision
         if (pipes[pipe].x <= (bird_x + BIRD_WIDTH) && (pipes[pipe].x + PIPE_WIDTH) > bird_x){
             detect_collision(pipe);
         }
-        printf("checked for pipe %d collision\n", pipe);
     }
 }
 
@@ -1427,7 +1433,6 @@ void process_audio() {
 
     if (count > 0){
         jump_strength = sum/count;
-        printf("jump strength: %f\n", jump_strength);
     }
 }
 
