@@ -3,11 +3,8 @@
 #include <stdbool.h>
 #include <time.h>
 #include <stdio.h>
-#include <stdint.h>
 
 // constants
-
-
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 #define PADDING 15
@@ -16,7 +13,7 @@
 #define PIPE_MAX_HEIGHT 80
 #define PIPE_WIDTH 20
 #define PIPE_COLOUR 0x0ff0
-#define PIPE_SPACE 70
+#define PIPE_SPACE 80
 
 #define MAX_PIPES 10
 
@@ -28,8 +25,6 @@
 #define GRAVITY 1
 #define JUMP -1
 #define SKY_COLOUR 0x9edd
-
-#define AUDIO_BASE 0xFF203040
 
 struct PipePair {
     int x;
@@ -1076,7 +1071,6 @@ static const short _9[]  = {
   0x9edd, 0x9edd, 0x9edd, 0x9edd, 0x9edd, 0x5000, 0x1800, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x4800, 0x9edd, 0x9edd, 0x9edd, 0x9edd
 };
 
-
 // global variables
 volatile int * pixel_ctrl_ptr = (int *)0xFF203020;
 volatile int *timer_status   = (int *)0xFF202000;
@@ -1084,8 +1078,6 @@ volatile int *timer_control  = (int *)0xFF202004;
 volatile int *timer_periodl  = (int *)0xFF202008;
 volatile int *timer_periodh  = (int *)0xFF20200C;
 volatile int *KEY_ptr = (int *)0xFF200050;
-int music_index = 0;
-int repeat_count = 0;
 
 volatile int pixel_buffer_start; 
 short int Buffer1[240][512];
@@ -1109,12 +1101,12 @@ short score_bg = SKY_COLOUR;
 
 const short *BG = START_SCREEN;
 
+int fall_wait_interval = 5;
+int jump_wait_interval = 10;
+
 // function declarations
 void wait_for_vsync();
 bool timer_done();
-void play_note(int step, int limit, int samples);
-void play_start_jingle(void);
-void play_lose_jingle();
 void plot_pixel(int x, int y, short int color);
 void clear_screen();
 void draw_bird(int x, int y);
@@ -1125,12 +1117,8 @@ void start_state();
 void game_state();
 void end_state();
 void process_audio();
-void play_coin_sound(void);
-
 void spawn_pipe();
 void draw_pipe();
-#include <stdint.h>
-
 
 int main(void)
 {
@@ -1157,43 +1145,55 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
     
-    start_state();
+    while (1){
+        start_state();
+        game_state();
+        end_state();
+    }
 }
 
 void start_state(){
-    
+    BG = START_SCREEN;
+    clear_screen();
+    wait_for_vsync();
+    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
+    clear_screen();
+
+
     int pressed = *(KEY_ptr + 3);
 
     while (!(pressed & 0x1)){
+        play_start_jingle();
         pressed = *(KEY_ptr + 3);
     }
 
     *(KEY_ptr + 3) = 0x1; 
-    play_start_jingle();
-    
-    game_state();
 }
 
 void game_state(){
     //reset vars
     next_pipe_index = 0;
+    num_pipes_spawned = 0;
     game_over = false;
     score = 0;
+    score_bg = SKY_COLOUR;
+    bird_y = 120;
+    prev_bird_y = 0;
+    bird_velocity = 0;
+    jump_strength = 0;
+    jump_wait_interval = 10;
+    fall_wait_interval = 10;
     
-    for (int i = 0 ; i < num_pipes_spawned ; i ++){
+    for (int i = 0 ; i < MAX_PIPES ; i ++){
         pipes[i].bottom_length = 0;
         pipes[i].top_length = 0;
+        pipes[i].x = 0;
     }
 
-    num_pipes_spawned = 0;
-
     BG = GAME_SCREEN;
-
     clear_screen();
-
     wait_for_vsync();
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
-
     clear_screen();
 
     spawn_pipe();
@@ -1204,8 +1204,6 @@ void game_state(){
 
     while(!game_over)
     {
-        
-        printf("%d \n", 1);
         // update positions
         for(int i = 0; i < num_pipes_spawned; i++){
             pipes[i].x--;
@@ -1215,28 +1213,30 @@ void game_state(){
                 play_coin_sound();
             }
         }
-        printf("%d \n", 2);
 
         if (timer_done()){
             spawn_pipe();
         }
 
-        printf("%d \n", 3);
         //updates jump strength based on audio input
-
-
         process_audio();
-
         if (jump_strength > 60){
-            bird_velocity += JUMP;
+            if (jump_wait_interval <= 0){
+                bird_velocity += JUMP;
+                jump_wait_interval = 10;
+            }
+            else
+                jump_wait_interval--;
         }
         else{
-            // apply gravity
-            bird_velocity += GRAVITY;
+            if (fall_wait_interval <= 0){
+                bird_velocity += GRAVITY;
+                fall_wait_interval = 10;
+            }
+            else
+                fall_wait_interval--;
         }
-        printf("%d \n", 4);
         bird_y += bird_velocity;
-
         // bounds (so it doesn't fly off screen)
         if (bird_y < 0) {
             bird_y = 0;
@@ -1244,13 +1244,11 @@ void game_state(){
         else if (bird_y > SCREEN_HEIGHT - BIRD_HEIGHT) {
             bird_y = SCREEN_HEIGHT - BIRD_HEIGHT;
         }
-        printf("%d \n", 5);
 
         //update game screen
         erase_bird(prev_bird_x, prev_bird_y);
         draw_bird(bird_x, bird_y);
         draw_pipe();
-        printf("6\n");
         update_score();
 
         wait_for_vsync();
@@ -1260,18 +1258,17 @@ void game_state(){
         draw_bird(bird_x, bird_y);
         draw_pipe();
         update_score();
-        printf("7\n");
 
         // update previous bird position
         prev_bird_x = bird_x;
         prev_bird_y = bird_y;
     }
-    end_state();
 }
 
 void end_state(){
     // START = bit 2, CONT = bit 1
     *timer_control = (0 << 2) | (0 << 1);
+    *timer_status = 0;
 
 	BG = END_SCREEN;
     clear_screen();
@@ -1282,12 +1279,11 @@ void end_state(){
     int pressed = *(KEY_ptr + 3);
 
     while (!(pressed & 0x1)){
+        play_lose_jingle();
         pressed = *(KEY_ptr + 3);
     }
 
     *(KEY_ptr + 3) = 0x1; 
-    printf("game ended\n");
-    game_state();
 }
 
 bool timer_done() {
@@ -1296,49 +1292,6 @@ bool timer_done() {
         return true;
     }
     return false;
-}
-
-#include <stdint.h>
-
-void play_note(int step, int limit, int samples) {
-    volatile int *audio_ptr = (int *)AUDIO_BASE;
-    int sample = 0; //sample
-    int dir = 1;
-    int count = 0;
-
-    while (count < samples) {
-        int fifospace = *(audio_ptr + 1);
-
-        while (((fifospace >> 16) & 0xFF) > 0 && count < samples) {
-            *(audio_ptr + 2) = sample;
-            *(audio_ptr + 3) = sample;
-
-            sample += dir * step;
-
-            if (sample > limit) dir = -1;
-            if (sample < -limit) dir = 1;
-
-            count++;
-            fifospace = *(audio_ptr + 1);
-        }
-    }
-}
-
-void play_start_jingle(void) {
-    play_note(2000000, 20000000, 4000);
-    play_note(2600000, 20000000, 4000);
-    play_note(3200000, 20000000, 6000);
-}
-
-void play_lose_jingle(void) {
-    play_note(3000000, 20000000, 4000);
-    play_note(2200000, 20000000, 4000);
-    play_note(1500000, 20000000, 6000);
-}
-
-void play_coin_sound(void) {
-    play_note(4000000, 20000000, 2000);
-    play_note(5000000, 20000000, 2000);
 }
 
 void spawn_pipe()
@@ -1356,13 +1309,6 @@ void spawn_pipe()
     }
 
     next_pipe_index = (next_pipe_index + 1) % MAX_PIPES;
-
-    draw_pipe();
-
-    wait_for_vsync();
-    pixel_buffer_start = *(pixel_ctrl_ptr + 1);
-
-    draw_pipe();
 }   
 
 void draw_pipe(){
@@ -1380,7 +1326,6 @@ void draw_pipe(){
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
 
-        printf("drew pipe %d top\n", pipe);
 
         for(int i = SCREEN_HEIGHT; i > SCREEN_HEIGHT - pipes[pipe].bottom_length; i--){
             // erase previous line of pipe
@@ -1388,13 +1333,11 @@ void draw_pipe(){
             // draw next line of pipe
             plot_pixel(pipes[pipe].x, i, PIPE_COLOUR);
         }
-        printf("drew pipe %d bottom\n", pipe);
 
         // if pipe is within x range of the bird check for collision
         if (pipes[pipe].x <= (bird_x + BIRD_WIDTH) && (pipes[pipe].x + PIPE_WIDTH) > bird_x){
             detect_collision(pipe);
         }
-        printf("checked for pipe %d collision\n", pipe);
     }
 }
 
@@ -1464,7 +1407,7 @@ void erase_bird(int x, int y)
 
 //audio processing
 
-
+#define AUDIO_BASE 0xFF203040
 void process_audio() {
     jump_strength = 0;
     // Audio codec Register address
@@ -1494,16 +1437,13 @@ void process_audio() {
 
     if (count > 0){
         jump_strength = sum/count;
-        printf("jump strength: %f\n", jump_strength);
     }
 }
 
 void detect_collision(int pipe){
-  if (game_over) return;
     //pipe collision check
     if (pipes[pipe].top_length >= bird_y || (SCREEN_HEIGHT - pipes[pipe].bottom_length) <= (bird_y + BIRD_HEIGHT)){
         game_over = true;
-        play_lose_jingle();
         return;
     } 
 }
@@ -1522,4 +1462,45 @@ void update_score(){
             plot_pixel(SCREEN_WIDTH - PADDING - SCORE_WIDTH + i, PADDING + j, colour_0);
         }
     }
+}
+
+void play_note(int step, int limit, int samples) {
+    volatile int *audio_ptr = (int *)AUDIO_BASE;
+    int sample = 0; //sample
+    int dir = 1;
+    int count = 0;
+
+    while (count < samples) {
+        int fifospace = *(audio_ptr + 1);
+
+        while (((fifospace >> 16) & 0xFF) > 0 && count < samples) {
+            *(audio_ptr + 2) = sample;
+            *(audio_ptr + 3) = sample;
+
+            sample += dir * step;
+
+            if (sample > limit) dir = -1;
+            if (sample < -limit) dir = 1;
+
+            count++;
+            fifospace = *(audio_ptr + 1);
+        }
+    }
+}
+
+void play_start_jingle(void) {
+    play_note(2000000, 20000000, 4000);
+    play_note(2600000, 20000000, 4000);
+    play_note(3200000, 20000000, 6000);
+}
+
+void play_lose_jingle(void) {
+    play_note(3000000, 20000000, 4000);
+    play_note(2200000, 20000000, 4000);
+    play_note(1500000, 20000000, 6000);
+}
+
+void play_coin_sound(void) {
+    play_note(4000000, 20000000, 2000);
+    play_note(5000000, 20000000, 2000);
 }
