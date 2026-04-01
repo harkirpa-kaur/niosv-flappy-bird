@@ -1499,6 +1499,7 @@ void process_audio() {
 }
 
 void detect_collision(int pipe){
+  if (game_over) return;
     //pipe collision check
     if (pipes[pipe].top_length >= bird_y || (SCREEN_HEIGHT - pipes[pipe].bottom_length) <= (bird_y + BIRD_HEIGHT)){
         game_over = true;
