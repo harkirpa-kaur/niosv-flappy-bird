@@ -1145,8 +1145,8 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1);
     clear_screen();
     
+    start_state();
     while (1){
-        start_state();
         game_state();
         end_state();
     }
